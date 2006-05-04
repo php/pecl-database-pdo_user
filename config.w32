@@ -1,7 +1,7 @@
 // $Id$
 // vim:ft=javascript
 
-ARG_ENABLE("pdo-sqlite", "for pdo_user support", "no");
+ARG_ENABLE("pdo-user", "for pdo_user support", "no");
 
 if (PHP_PDO_USER != "no") {
 
