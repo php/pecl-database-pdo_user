@@ -380,6 +380,15 @@ static int pdo_user_driver_factory(pdo_dbh_t *dbh, zval *driver_options TSRMLS_D
 		{ "driver", NULL, 0 }
 	};
 
+	if (driver_options && Z_TYPE_P(driver_options) == IS_ARRAY) {
+		zval **tmp;
+		if (zend_hash_index_find(Z_ARRVAL_P(driver_options), PDO_ATTR_PERSISTENT, (void**)&tmp) == SUCCESS &&
+			zval_is_true(*tmp)) {
+			php_pdo_factory_error(-5 TSRMLS_CC, "PDO_User driver may not be used persistently");
+			return 0;
+		}
+	}
+
 	php_pdo_parse_data_source(dbh->data_source, dbh->data_source_len, vars, 1);
 
 	if (!vars[0].optval) {
