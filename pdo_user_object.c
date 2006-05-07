@@ -19,6 +19,7 @@
 /* $Id$ */
 
 #include "php_pdo_user_int.h"
+#include "php_pdo_user_sql.h"
 
 /* ******************
    * PDO_User Class *
@@ -218,6 +219,39 @@ PHP_METHOD(pdo_user,parsedsn)
 }
 /* }}} */
 
+/* {{{ proto array PDO_User::tokenizeSQL(string sql[, bool include_whitespace)
+Break apart a SQL statement into tokens */
+PHP_METHOD(pdo_user,tokenizesql)
+{
+	char *sql;
+	int sql_len;
+	zend_bool include_whitespace = 0;
+	php_pdo_user_sql_tokenizer T;
+	php_pdo_user_sql_token token;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|b", &sql, &sql_len, &include_whitespace) == FAILURE) {
+		return;
+	}
+
+	T.start = sql;
+	T.end = sql + sql_len;
+
+	array_init(return_value);
+	while (PU_END != php_pdo_user_sql_get_token(&T, &token)) {
+		zval *tok;
+
+		if (token.id == PU_WHITESPACE && !include_whitespace) {
+			continue;
+		}
+		MAKE_STD_ZVAL(tok);
+		array_init(tok);
+		add_assoc_long(tok, "token", token.id);
+		add_assoc_stringl(tok, "data", token.token, token.token_len, !token.freeme);
+		add_next_index_zval(return_value, tok);
+	}
+}
+/* }}} */
+
 static zend_class_entry *php_pdo_user_ce;
 static zend_class_entry *php_pdo_user_driver_interface;
 static zend_class_entry *php_pdo_user_statement_interface;
@@ -226,6 +260,7 @@ static zend_function_entry php_pdo_user_class_functions[] = {
 	PHP_ME(pdo_user,		driverparam,						NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
 	PHP_MALIAS(pdo_user,	statementparam,		driverparam,	NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
 	PHP_ME(pdo_user,		parsedsn,							NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+	PHP_ME(pdo_user,		tokenizesql,						NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
 	{ NULL, NULL, NULL }
 };
 
@@ -275,9 +310,12 @@ static inline void _php_pdo_user_declare_long_constant(zend_class_entry *ce, con
 
 #define PHP_PDO_USER_DECLARE_LONG_CONSTANT(cnst) \
 	_php_pdo_user_declare_long_constant(php_pdo_user_ce, #cnst , sizeof( #cnst ) - 1, PHP_PDO_USER_##cnst TSRMLS_CC)
+#define PHP_PDO_USER_DECLARE_TOKEN_CONSTANT(lbl) \
+	_php_pdo_user_declare_long_constant(php_pdo_user_ce, (lbl)->label, strlen((lbl)->label), (lbl)->id TSRMLS_CC)
 
 PHP_MINIT_FUNCTION(php_pdo_user_class)
 {
+	php_pdo_user_sql_token_label *labels = php_pdo_user_sql_token_labels;
 	zend_class_entry ce;
 
 	INIT_CLASS_ENTRY(ce, "PDO_User", php_pdo_user_class_functions);
@@ -290,6 +328,11 @@ PHP_MINIT_FUNCTION(php_pdo_user_class)
 
 	PHP_PDO_USER_DECLARE_LONG_CONSTANT(STATEMENT_PARAM_ACTIVE_QUERY);
 	PHP_PDO_USER_DECLARE_LONG_CONSTANT(STATEMENT_PARAM_SQLSTATE);
+
+	while (labels->label) {
+		PHP_PDO_USER_DECLARE_TOKEN_CONSTANT(labels);
+		labels++;
+	}	
 
 	INIT_CLASS_ENTRY(ce, "PDO_User_Driver", php_pdo_user_driver_interface_functions);
 	php_pdo_user_driver_interface = zend_register_internal_interface(&ce TSRMLS_CC);

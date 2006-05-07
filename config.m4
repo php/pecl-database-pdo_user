@@ -27,7 +27,9 @@ if test "$PHP_PDO_USER" != "no"; then
     AC_MSG_RESULT($pdo_inc_path)
   ])
 
-  PHP_NEW_EXTENSION(pdo_user, pdo_user.c pdo_user_driver.c pdo_user_statement.c pdo_user_object.c, $ext_shared,,-I$pdo_inc_path)
+  PHP_NEW_EXTENSION(pdo_user, pdo_user.c pdo_user_driver.c pdo_user_statement.c pdo_user_object.c \
+pdo_user_sql_tokenizer.c, $ext_shared,,-I$pdo_inc_path)
+
   ifdef([PHP_ADD_EXTENSION_DEP],
   [
     PHP_ADD_EXTENSION_DEP(pdo_user, pdo)
