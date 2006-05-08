@@ -186,6 +186,14 @@ int php_pdo_user_sql_get_token(php_pdo_user_sql_tokenizer *t, php_pdo_user_sql_t
 	'after'									{ RET(PU_AFTER); }
 	'identified'							{ RET(PU_IDENTIFIED); }
 	'distinct'								{ RET(PU_DISTINCT); }
+	'inner'									{ RET(PU_INNER); }
+	'outer'									{ RET(PU_OUTER); }
+	'left'									{ RET(PU_LEFT); }
+	'right'									{ RET(PU_RIGHT); }
+	'join'									{ RET(PU_JOIN); }
+	'on'									{ RET(PU_ON); }
+	'asc'									{ RET(PU_ASC); }
+	'desc'									{ RET(PU_DESC); }
 
 	/* SQL Types */
 	'int'									{ RET(PU_INT); }
@@ -289,6 +297,14 @@ php_pdo_user_sql_token_label php_pdo_user_sql_token_labels[] = {
 	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_AFTER)
 	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_IDENTIFIED)
 	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_DISTINCT)
+	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_INNER)
+	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_OUTER)
+	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_LEFT)
+	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_RIGHT)
+	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_JOIN)
+	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_ON)
+	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_ASC)
+	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_DESC)
 
 	/* SQL Types */
 	PHP_PDO_USER_SQL_TOKEN_LABEL_ENTRY(PU_INT)

@@ -58,6 +58,14 @@ enum php_pdo_user_sql_token_num {
 	PU_AFTER,
 	PU_IDENTIFIED,
 	PU_DISTINCT,
+	PU_INNER,
+	PU_OUTER,
+	PU_LEFT,
+	PU_RIGHT,
+	PU_JOIN,
+	PU_ON,
+	PU_ASC,
+	PU_DESC,
 
 	/* SQL Types */
 	PU_INT,
