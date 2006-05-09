@@ -28,7 +28,7 @@ if test "$PHP_PDO_USER" != "no"; then
   ])
 
   PHP_NEW_EXTENSION(pdo_user, pdo_user.c pdo_user_driver.c pdo_user_statement.c pdo_user_object.c \
-pdo_user_sql_tokenizer.c, $ext_shared,,-I$pdo_inc_path)
+pdo_user_sql_tokenizer.c pdo_user_sql_parser.c, $ext_shared,,-I$pdo_inc_path)
 
   PHP_ADD_MAKEFILE_FRAGMENT
 

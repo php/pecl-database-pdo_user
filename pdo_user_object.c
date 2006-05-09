@@ -252,6 +252,43 @@ PHP_METHOD(pdo_user,tokenizesql)
 }
 /* }}} */
 
+static void *pdo_user_malloc_wrapper(size_t x) { return emalloc(x); }
+static void pdo_user_free_wrapper(size_t x) { efree(x); }
+
+/* {{{ proto array PDO_User::parseSQL(string sql)
+Compile a SQL statement into a query structure */
+PHP_METHOD(pdo_user,parsesql)
+{
+	char *sql;
+	int sql_len;
+	php_pdo_user_sql_tokenizer T;
+	php_pdo_user_sql_token token;
+	void *pParser;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &sql, &sql_len) == FAILURE) {
+		return;
+	}
+
+	T.start = sql;
+	T.end = sql + sql_len;
+	pParser = php_pdo_user_sql_parserAlloc( pdo_user_malloc_wrapper );
+
+	while (PU_END != php_pdo_user_sql_get_token(&T, &token)) {
+		if (token.id != PU_WHITESPACE) {
+			php_pdo_user_sql_parser(pParser, token.id, token, return_value);
+		}
+		if (Z_TYPE_P(return_value) == IS_BOOL) {
+			/* FALSE implied */
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "Failure parsing SQL statement at: %s", token.token);
+			php_pdo_user_sql_parserFree(pParser, pdo_user_free_wrapper);
+			return;
+		}
+	}
+	php_pdo_user_sql_parser(pParser, 0, token, return_value);
+	php_pdo_user_sql_parserFree(pParser, pdo_user_free_wrapper);
+}
+/* }}} */
+
 static zend_class_entry *php_pdo_user_ce;
 static zend_class_entry *php_pdo_user_driver_interface;
 static zend_class_entry *php_pdo_user_statement_interface;
@@ -261,6 +298,7 @@ static zend_function_entry php_pdo_user_class_functions[] = {
 	PHP_MALIAS(pdo_user,	statementparam,		driverparam,	NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
 	PHP_ME(pdo_user,		parsedsn,							NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
 	PHP_ME(pdo_user,		tokenizesql,						NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+	PHP_ME(pdo_user,		parsesql,							NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
 	{ NULL, NULL, NULL }
 };
 

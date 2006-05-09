@@ -1,0 +1,532 @@
+%token_prefix PU_
+%token_type {php_pdo_user_sql_token}
+%default_type {zval*}
+%extra_argument {zval *return_value}
+%name php_pdo_user_sql_parser
+%start_symbol terminal_statement
+%right NOT GROUP ORDER BY LIMIT WHERE HAVING.
+%right SELECT INSERT INTO.
+%left COMMA AND OR XOR AS BETWEEN LIKE RLIKE EQUALS LESSER GREATER LESS_EQUAL GREATER_EQUAL.
+%right DISTINCT.
+%left MUL DIV MOD.
+%left RPAREN PLUS MINUS.
+%right LPAREN.
+%nonassoc LABEL LNUM HNUM STRING.
+%include {
+#include "php.h"
+#include "php_pdo_user_sql.h"
+
+static inline zval *pusp_zvalize_hnum(php_pdo_user_sql_token *T) {
+	zval *ret;
+	int val = 0;
+	char *s = T->token, *e = T->token + T->token_len;
+
+	MAKE_STD_ZVAL(ret);
+	if (strncmp("0x", s, 2) == 0) {
+		s += 2;
+	}
+	while (s < e) {
+		/* illegal characters aren't possible, the lexer wouldn't give us any */
+		val <<=4;
+		if (*s >= '0' && *s <= '9') {
+			val |= *s - '0';
+		} else if (*s >= 'A' && *s <= 'F') {
+			val |= (*s - 'A') + 10;
+		} else {
+			val |= (*s - 'a') + 10;
+		} 
+		s++;
+	}
+	ZVAL_LONG(ret, val);
+	return ret;
+}
+
+static inline zval *pusp_zvalize_lnum(php_pdo_user_sql_token *T) {
+	zval *ret;
+	int val = 0;
+	unsigned char *s = T->token, *e = T->token + T->token_len;
+
+	MAKE_STD_ZVAL(ret);
+	while (s < e) {
+		/* illegal characters aren't possible, the lexer wouldn't give us any */
+		val *= 10;
+		val += *s - '0';
+		s++;
+	}
+	ZVAL_LONG(ret, val);
+	return ret;
+}
+
+static inline zval *pusp_zvalize_token(php_pdo_user_sql_token *T)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	ZVAL_STRINGL(ret, T->token, T->token_len, !T->freeme);
+
+	return ret;
+}
+
+#define pusp_zvalize_static_string(str)	pusp_zvalize_stringl((str), sizeof(str) - 1, 1)
+static inline zval *pusp_zvalize_stringl(char *str, int strlen, int dup)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	ZVAL_STRINGL(ret, str, strlen, dup);
+
+	return ret;
+}
+
+static inline void pusp_do_push_labeled_zval(zval *ret, zval **pair)
+{
+	add_assoc_zval(ret, Z_STRVAL_P(pair[0]), pair[1]);
+	zval_ptr_dtor(&pair[0]);
+	efree(pair);
+}
+
+/* ----------- */
+
+static inline void pusp_do_terminal_statement(zval **return_value, zval *statement, zend_bool have_semicolon)
+{
+	**return_value = *statement;
+	efree(statement);
+	add_assoc_bool(*return_value, "terminating-semicolon", have_semicolon);
+}
+
+static inline zval *pusp_do_join_expression(zval *table1, zval *jointype, zval *table2, zval *oncondition)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "join", sizeof("join") - 1, 1);
+	add_assoc_zval(ret, "table1", table1);
+	add_assoc_zval(ret, "join-type", jointype);
+	add_assoc_zval(ret, "table2", table2);
+	add_assoc_zval(ret, "on", oncondition);
+
+	return ret;
+}
+
+static inline zval *pusp_do_function(zval *fname, zval *arguments)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "fcall", sizeof("fcall") - 1, 1);
+	add_assoc_zval(ret, "fname", fname);
+	add_assoc_zval(ret, "args", arguments);
+
+	return ret;
+}
+
+static inline zval *pusp_do_add_query_modifier(zval *ret, char *lbl, zval *val)
+{
+	if (Z_TYPE_P(ret) == IS_NULL) { /* substitute for: ret == EG(uninitialized_zval_ptr), avoid the TSRMLS_FETCH(); */
+		MAKE_STD_ZVAL(ret);
+		array_init(ret);
+	}
+	add_assoc_zval(ret, lbl, val);
+
+	return ret;
+}
+
+static zval *pusp_do_declare_num(char *fieldtype, zval *precision, zval *unsgn, zval *zerofill)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "field", sizeof("field") - 1, 1);
+	add_assoc_string(ret, "fieldtype", fieldtype, 1);
+	add_assoc_zval(ret, "precision", precision);
+	add_assoc_zval(ret, "unsigned", unsgn);
+	add_assoc_zval(ret, "zerofill", zerofill);
+
+	return ret;
+}
+
+static zval *pusp_do_declare_type(char *type, char *attr, zval *zattr)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "field", sizeof("field") - 1, 1);
+	add_assoc_string(ret, "fieldtype", type, 1);
+	if (attr) {
+		add_assoc_zval(ret, attr, zattr);
+	}
+
+	return ret;
+}
+
+/* ---------------- */
+
+static inline zval *pusp_do_select_statement(zval *fieldlist, zval *tableexpr, zval *modifiers)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "statement", sizeof("statement") - 1, 1);
+	add_assoc_stringl(ret, "statement", "select", sizeof("select") - 1, 1);
+	add_assoc_zval(ret, "fields", fieldlist);
+	add_assoc_zval(ret, "from", tableexpr);
+	add_assoc_zval(ret, "modifiers", modifiers);
+
+	return ret;
+}
+
+static inline zval *pusp_do_insert_select_statement(zval *table, zval *fields, zval *selectstmt)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "statement", sizeof("statement") - 1, 1);
+	add_assoc_stringl(ret, "statement", "insert-select", sizeof("insert-select") - 1, 1);
+	add_assoc_zval(ret, "table", table);
+	add_assoc_zval(ret, "fields", fields);
+	add_assoc_zval(ret, "query", selectstmt);
+
+	return ret;
+}
+
+static inline zval *pusp_do_insert_statement(zval *table, zval *fields, zval *insertgroup)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "statement", sizeof("statement") - 1, 1);
+	add_assoc_stringl(ret, "statement", "insert", sizeof("insert") - 1, 1);
+	add_assoc_zval(ret, "table", table);
+	add_assoc_zval(ret, "fields", fields);
+	add_assoc_zval(ret, "data", insertgroup);
+
+	return ret;
+}
+
+static inline zval *pusp_do_update_statement(zval *table, zval *setlist, zval *wherestmt)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "statement", sizeof("statement") - 1, 1);
+	add_assoc_stringl(ret, "statement", "update", sizeof("update") - 1, 1);
+	add_assoc_zval(ret, "table", table);
+	add_assoc_zval(ret, "set", setlist);
+	add_assoc_zval(ret, "where", wherestmt);
+
+	return ret;
+}
+
+static inline zval *pusp_do_delete_statement(zval *table, zval *wherestmt)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "statement", sizeof("statement") - 1, 1);
+	add_assoc_stringl(ret, "statement", "delete", sizeof("delete") - 1, 1);
+	add_assoc_zval(ret, "table", table);
+	add_assoc_zval(ret, "where", wherestmt);
+
+	return ret;
+}
+
+static inline zval *pusp_do_rename_statement(zval *renlist)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "statement", sizeof("statement") - 1, 1);
+	add_assoc_stringl(ret, "statement", "rename table", sizeof("rename table") - 1, 1);
+	add_assoc_zval(ret, "tables", renlist);
+
+	return ret;
+}
+
+static inline zval *pusp_do_create_statement(zval *table, zval *fields)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "statement", sizeof("statement") - 1, 1);
+	add_assoc_stringl(ret, "statement", "create table", sizeof("create table") - 1, 1);
+	add_assoc_zval(ret, "table", table);
+	add_assoc_zval(ret, "fields", fields);
+
+	return ret;
+}
+
+static inline zval *pusp_do_drop_statement(zval *table)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_stringl(ret, "type", "statement", sizeof("statement") - 1, 1);
+	add_assoc_stringl(ret, "statement", "drop table", sizeof("drop table") - 1, 1);
+	add_assoc_zval(ret, "table", table);
+
+	return ret;
+}
+
+#define DO_COND(R, T, A, B) { \
+	MAKE_STD_ZVAL(R); \
+	array_init(R); \
+	add_assoc_stringl(R, "type", "condition", sizeof("condition") - 1, 1); \
+	add_assoc_zval(R, "op1", A); \
+	add_assoc_stringl(R, "condition", T, sizeof(T) - 1, 1); \
+	add_assoc_zval(R, "op2", B); \
+}
+
+#define DO_MATHOP(R, A, O, B) { \
+	MAKE_STD_ZVAL(R); \
+	array_init(R); \
+	add_assoc_stringl(R, "type", "math", sizeof("math") - 1, 1); \
+	add_assoc_zval(R, "op1", A); \
+	add_assoc_stringl(R, "operation", O, sizeof(O) - 1, 1); \
+	add_assoc_zval(R, "op2", B); \
+}
+
+} /* %include */
+%syntax_error {
+	RETVAL_FALSE;
+}
+
+terminal_statement ::= statement(S) SEMICOLON. { pusp_do_terminal_statement(&return_value, S, 1); }
+terminal_statement ::= statement(S). { pusp_do_terminal_statement(&return_value, S, 0); }
+
+%destructor statement { zval_ptr_dtor(&$$); }
+statement(R) ::= selectstatement(S). { R = S; }
+statement(R) ::= INSERT INTO LABEL(T) optionalinsertfieldlist(F) selectstatement(S). { R = pusp_do_insert_select_statement(pusp_zvalize_token(&T), F, S); }
+statement(R) ::= INSERT INTO LABEL(T) optionalinsertfieldlist(F) VALUES insertgrouplist(G). { R = pusp_do_insert_statement(pusp_zvalize_token(&T), F, G); }
+statement(R) ::= UPDATE LABEL(T) SET setlist(L) optionalwhereclause(W). { R = pusp_do_update_statement(pusp_zvalize_token(&T), L, W); }
+statement(R) ::= DELETE LABEL(T) optionalwhereclause(W). { R = pusp_do_delete_statement(pusp_zvalize_token(&T), W); }
+statement(R) ::= RENAME TABLE togrouplist(T). { R = pusp_do_rename_statement(T); }
+statement(R) ::= CREATE TABLE LABEL(T) LPAREN fielddescriptorlist(L) RPAREN. { R = pusp_do_create_statement(pusp_zvalize_token(&T), L); }
+statement(R) ::= DROP TABLE LABEL(T). { R = pusp_do_drop_statement(pusp_zvalize_token(&T)); }
+
+%destructor selectstatement { zval_ptr_dtor(&$$); }
+selectstatement(R) ::= SELECT fieldlist(F) FROM tableexpr(T) optionalquerymodifiers(M). { R = pusp_do_select_statement(F,T,M); }
+
+%destructor fielddescriptorlist { zval_ptr_dtor(&$$); }
+fielddescriptorlist(R) ::= fielddescriptorlist(L) COMMA fielddescriptor(D). { add_next_index_zval(L, D); R = L; }
+fielddescriptorlist(R) ::= fielddescriptor(D). { MAKE_STD_ZVAL(R); array_init(R); add_next_index_zval(R, D); }
+
+%destructor fielddescriptor { zval_ptr_dtor(&$$); }
+fielddescriptor(R) ::= LABEL(F) fielddescriptortype(T) optionalfielddescriptormodifierlist(M). { add_assoc_zval(T, "name", pusp_zvalize_token(&F)); add_assoc_zval(T, "flags", M); R = T; }
+
+%destructor optionalfielddescriptormodifierlist { zval_ptr_dtor(&$$); }
+optionalfielddescriptormodifierlist(R) ::= optionalfielddescriptormodifierlist(L) NOT NULL. { add_next_index_string(L, "not null", 1); R = L; }
+optionalfielddescriptormodifierlist(R) ::= optionalfielddescriptormodifierlist(L) DEFAULT literal(V). { add_assoc_zval(L, "default", V); R = L; }
+optionalfielddescriptormodifierlist(R) ::= optionalfielddescriptormodifierlist(L) PRIMARY KEY. { add_next_index_string(L, "primary key", 1); R = L; }
+optionalfielddescriptormodifierlist(R) ::= optionalfielddescriptormodifierlist(L) UNIQUE KEY. { add_next_index_string(L, "unique key", 1); R = L; }
+optionalfielddescriptormodifierlist(R) ::= optionalfielddescriptormodifierlist(L) KEY. { add_next_index_string(L, "key", 1); R = L; }
+optionalfielddescriptormodifierlist(R) ::= optionalfielddescriptormodifierlist(L) AUTO_INCREMENT. { add_next_index_string(L, "auto_increment", 1); R = L; }
+optionalfielddescriptormodifierlist(R) ::= . { MAKE_STD_ZVAL(R); array_init(R); }
+
+%destructor fielddescriptortype { zval_ptr_dtor(&$$); }
+fielddescriptortype(R) ::= BIT. { R = pusp_do_declare_type("bit", NULL, NULL); }
+fielddescriptortype(R) ::= INT optionalprecision(P) optionalunsigned(U) optionalzerofill(Z). { R = pusp_do_declare_num("int", P, U, Z); }
+fielddescriptortype(R) ::= INTEGER optionalprecision(P) optionalunsigned(U) optionalzerofill(Z). { R = pusp_do_declare_num("integer", P, U, Z); }
+fielddescriptortype(R) ::= TINYINT optionalprecision(P) optionalunsigned(U) optionalzerofill(Z). { R = pusp_do_declare_num("tinyint", P, U, Z); }
+fielddescriptortype(R) ::= SMALLINT optionalprecision(P) optionalunsigned(U) optionalzerofill(Z). { R = pusp_do_declare_num("smallint", P, U, Z); }
+fielddescriptortype(R) ::= MEDIUMINT optionalprecision(P) optionalunsigned(U) optionalzerofill(Z). { R = pusp_do_declare_num("mediumint", P, U, Z); }
+fielddescriptortype(R) ::= BIGINT optionalprecision(P) optionalunsigned(U) optionalzerofill(Z). { R = pusp_do_declare_num("bigint", P, U, Z); }
+fielddescriptortype(R) ::= YEAR optionalprecision(P). { R = pusp_do_declare_type("year", "precision", P); }
+fielddescriptortype(R) ::= FLOAT optionalfloatprecision(P) optionalunsigned(U) optionalzerofill(Z). { R = pusp_do_declare_num("float", P, U, Z); }
+fielddescriptortype(R) ::= REAL optionalfloatprecision(P) optionalunsigned(U) optionalzerofill(Z). { R = pusp_do_declare_num("real", P, U, Z); }
+fielddescriptortype(R) ::= DECIMAL optionalfloatprecision(P) optionalunsigned(U) optionalzerofill(Z). { R = pusp_do_declare_num("decimal", P, U, Z); }
+fielddescriptortype(R) ::= DOUBLE optionalfloatprecision(P) optionalunsigned(U) optionalzerofill(Z). { R = pusp_do_declare_num("double", P, U, Z); }
+fielddescriptortype(R) ::= CHAR LPAREN intnum(P) RPAREN. { R = pusp_do_declare_type("char", "length", P); }
+fielddescriptortype(R) ::= VARCHAR LPAREN intnum(P) RPAREN. { R = pusp_do_declare_type("varchar", "length", P); }
+fielddescriptortype(R) ::= DATE. { R = pusp_do_declare_type("text", "date", NULL); }
+fielddescriptortype(R) ::= TIME. { R = pusp_do_declare_type("text", "time", NULL); }
+fielddescriptortype(R) ::= DATETIME optionalprecision(P). { R = pusp_do_declare_type("datetime", "precision", P); }
+fielddescriptortype(R) ::= TIMESTAMP optionalprecision(P). { R = pusp_do_declare_type("timestamp", "precision", P); }
+fielddescriptortype(R) ::= TEXT. { R = pusp_do_declare_type("text", "precision", NULL); }
+fielddescriptortype(R) ::= TINYTEXT. { zval *p; MAKE_STD_ZVAL(p); ZVAL_STRING(p, "tiny", 1); R = pusp_do_declare_type("text", "precision", p); }
+fielddescriptortype(R) ::= MEDIUMTEXT. { zval *p; MAKE_STD_ZVAL(p); ZVAL_STRING(p, "medium", 1); R = pusp_do_declare_type("text", "precision", p); }
+fielddescriptortype(R) ::= LONGTEXT. { zval *p; MAKE_STD_ZVAL(p); ZVAL_STRING(p, "long", 1); R = pusp_do_declare_type("text", "precision", p); }
+fielddescriptortype(R) ::= BLOB. { R = pusp_do_declare_type("blob", "precision", NULL); }
+fielddescriptortype(R) ::= TINYBLOB. { zval *p; MAKE_STD_ZVAL(p); ZVAL_STRING(p, "tiny", 1); R = pusp_do_declare_type("blob", "precision", p); }
+fielddescriptortype(R) ::= MEDIUMBLOB. { zval *p; MAKE_STD_ZVAL(p); ZVAL_STRING(p, "medium", 1); R = pusp_do_declare_type("blob", "precision", p); }
+fielddescriptortype(R) ::= LONGBLOB. { zval *p; MAKE_STD_ZVAL(p); ZVAL_STRING(p, "long", 1); R = pusp_do_declare_type("blob", "precision", p); }
+fielddescriptortype(R) ::= BINARY LPAREN intnum(P) RPAREN. { R = pusp_do_declare_type("binary", "length", P); }
+fielddescriptortype(R) ::= VARBINARY LPAREN intnum(P) RPAREN. { R = pusp_do_declare_type("varbinary", "length", P); }
+fielddescriptortype(R) ::= SET LPAREN literallist(L) RPAREN. { R = pusp_do_declare_type("set", "flags", L); }
+fielddescriptortype(R) ::= ENUM LPAREN literallist(L) RPAREN. { R = pusp_do_declare_type("enum", "values", L); }
+
+%destructor optionalunsigned { zval_ptr_dtor(&$$); }
+optionalunsigned(R) ::= UNSIGNED. { MAKE_STD_ZVAL(R); ZVAL_TRUE(R); }
+optionalunsigned(R) ::= . { MAKE_STD_ZVAL(R); ZVAL_FALSE(R); }
+
+%destructor optionalzerofill { zval_ptr_dtor(&$$); }
+optionalzerofill(R) ::= ZEROFILL. { MAKE_STD_ZVAL(R); ZVAL_TRUE(R); }
+optionalzerofill(R) ::= . { MAKE_STD_ZVAL(R); ZVAL_FALSE(R); }
+
+%destructor optionalprecision { zval_ptr_dtor(&$$); }
+optionalprecision(R) ::= LPAREN intnum(P) RPAREN. { R = P; }
+optionalprecision(R) ::= . { TSRMLS_FETCH(); R = EG(uninitialized_zval_ptr); }
+
+%destructor optionalfloatprecision { zval_ptr_dtor(&$$); }
+optionalfloatprecision(R) ::= LPAREN intnum(L) COMMA intnum(D) RPAREN. { MAKE_STD_ZVAL(R); array_init(R); add_assoc_zval(R, "length", L); add_assoc_zval(R, "decimals", D); }
+optionalfloatprecision(R) ::= . { TSRMLS_FETCH(); R = EG(uninitialized_zval_ptr); }
+
+%destructor literallist { zval_ptr_dtor(&$$); }
+literallist(R) ::= literallist(L) COMMA literal(E). { add_next_index_zval(L, E); R = L; }
+literallist(R) ::= literal(E). { MAKE_STD_ZVAL(R); array_init(R); add_next_index_zval(R, E); }
+
+%destructor togrouplist { zval_ptr_dtor(&$$); }
+togrouplist(R) ::= togrouplist(L) COMMA togroup(V). { pusp_do_push_labeled_zval(L, V); R = L; }
+togrouplist(R) ::= togroup(V). { MAKE_STD_ZVAL(R); array_init(R); pusp_do_push_labeled_zval(R, V); }
+
+%type togroup {zval**}
+%destructor togroup { zval_ptr_dtor(&$$[0]); zval_ptr_dtor(&$$[1]); efree($$); }
+togroup(R) ::= LABEL(F) TO LABEL(T). { zval **tmp = safe_emalloc(2, sizeof(zval*), 0); tmp[0] = pusp_zvalize_token(&F); tmp[1] = pusp_zvalize_token(&T); R = tmp; }
+
+%destructor setlist { zval_ptr_dtor(&$$); }
+setlist(R) ::= setlist(L) COMMA setexpr(V). { pusp_do_push_labeled_zval(L, (zval**)V); R = L; }
+setlist(R) ::= setexpr(V). { MAKE_STD_ZVAL(R); array_init(R); pusp_do_push_labeled_zval(R, V); }
+
+%type setexpr {zval**}
+%destructor setexpr { zval_ptr_dtor(&$$[0]); zval_ptr_dtor(&$$[1]); efree($$); }
+setexpr(R) ::= LABEL(F) EQUALS expr(E). { zval **tmp = safe_emalloc(2, sizeof(zval*), 0); tmp[0] = pusp_zvalize_token(&F); tmp[1] = E; R = tmp; }
+
+%destructor insertgrouplist { zval_ptr_dtor(&$$); }
+insertgrouplist(R) ::= insertgrouplist(L) COMMA insertgroup(G). { add_next_index_zval(L, G); R = L; }
+insertgrouplist(R) ::= insertgroup(G). { MAKE_STD_ZVAL(R); array_init(R); add_next_index_zval(R, G); }
+
+%destructor insertgroup { zval_ptr_dtor(&$$); }
+insertgroup(R) ::= LPAREN exprlist(L) RPAREN. { R = L; }
+
+%destructor labellist { zval_ptr_dtor(&$$); }
+labellist(R) ::= labellist(L) COMMA LABEL(F). { add_next_index_zval(L, pusp_zvalize_token(&F)); R = L; }
+labellist(R) ::= LABEL(F). { MAKE_STD_ZVAL(R); array_init(R); add_next_index_zval(R, pusp_zvalize_token(&F)); }
+
+%destructor optionalinsertfieldlist { zval_ptr_dtor(&$$); }
+optionalinsertfieldlist(R) ::= LPAREN labellist(L) RPAREN. { R = L; }
+optionalinsertfieldlist(R) ::= . { TSRMLS_FETCH(); R = EG(uninitialized_zval_ptr); }
+
+%destructor fieldlist { zval_ptr_dtor(&$$); }
+fieldlist(R) ::= fieldlist(L) COMMA field(F). { add_next_index_zval(L, F); R = L; }
+fieldlist(R) ::= field(F). { MAKE_STD_ZVAL(R); array_init(R); add_next_index_zval(R, F); }
+
+%destructor field { zval_ptr_dtor(&$$); }
+field(R) ::= expr(E). { R = E; }
+field(R) ::= field(E) AS LABEL(A). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_stringl(R, "type", "alias", sizeof("alias") - 1, 1); add_assoc_zval(R, "field", E); add_assoc_zval(R, "as", pusp_zvalize_token(&A)); }
+
+%destructor tableexpr { zval_ptr_dtor(&$$); }
+tableexpr(R) ::= LPAREN tableexpr(T) RPAREN. { R = T; }
+tableexpr(R) ::= tableexpr(A) joinclause(J) tableexpr(B) ON cond(O). { R = pusp_do_join_expression(A, J, B, O); }
+tableexpr(R) ::= tableexpr(E) AS LABEL(A). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_stringl(R, "type", "alias", sizeof("alias") - 1, 1); add_assoc_zval(R, "table", E); add_assoc_zval(R, "as", pusp_zvalize_token(&A)); }
+tableexpr(R) ::= LABEL(L). { R = pusp_zvalize_token(&L); }
+
+/*
+TODO: Make this work, there's a ornery reduce conflict going on somewhere...
+tableexpr(R) ::= tableexprlist(L) COMMA tableexpr(T). { add_next_index_zval(L, T); R = L; }
+
+tableexprlist(R) ::= tableexprlist(L) COMMA tableexpr(T). { add_next_index_zval(L, T); R = L; }
+tableexprlist(R) ::= tableexpr(T). { MAKE_STD_ZVAL(R); add_assoc_stringl(R, "type", "table-list", sizeof("table-list") - 1, 1); add_next_index_zval(R, T); }
+*/
+
+%destructor joinclause { zval_ptr_dtor(&$$); }
+joinclause(R) ::= INNER JOIN. { R = pusp_zvalize_static_string("inner"); }
+joinclause(R) ::= OUTER JOIN. { R = pusp_zvalize_static_string("outer"); }
+joinclause(R) ::= LEFT JOIN. { R = pusp_zvalize_static_string("left"); }
+joinclause(R) ::= RIGHT JOIN. { R = pusp_zvalize_static_string("right"); }
+
+%destructor optionalquerymodifiers { zval_ptr_dtor(&$$); }
+optionalquerymodifiers(R) ::= optionalquerymodifiers(O) whereclause(W). { R = pusp_do_add_query_modifier(O, "where", W); }
+optionalquerymodifiers(R) ::= optionalquerymodifiers(O) limitclause(L). { R = pusp_do_add_query_modifier(O, "limit", L); }
+optionalquerymodifiers(R) ::= optionalquerymodifiers(O) havingclause(H). { R = pusp_do_add_query_modifier(O, "having", H); }
+optionalquerymodifiers(R) ::= optionalquerymodifiers(O) groupclause(G). { R = pusp_do_add_query_modifier(O, "group-by", G); }
+optionalquerymodifiers(R) ::= optionalquerymodifiers(O) orderclause(B). { R = pusp_do_add_query_modifier(O, "order-by", B); }
+optionalquerymodifiers(R) ::= . { TSRMLS_FETCH(); R = EG(uninitialized_zval_ptr); }
+
+%destructor whereclause { zval_ptr_dtor(&$$); }
+whereclause(R) ::= WHERE cond(C). { R = C; }
+
+%destructor limitclause { zval_ptr_dtor(&$$); }
+limitclause(R) ::= LIMIT intnum(F) COMMA intnum(T). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_zval(R, "from", F); add_assoc_zval(R, "to", T); }
+
+%destructor havingclause { zval_ptr_dtor(&$$); }
+havingclause(R) ::= HAVING cond(C). { R = C; }
+
+%destructor groupclause { zval_ptr_dtor(&$$); }
+groupclause(R) ::= GROUP BY grouplist(G). { R = G; }
+
+%destructor orderclause { zval_ptr_dtor(&$$); }
+orderclause(R) ::= ORDER BY orderlist(O). { R = O; }
+
+%destructor optionalwhereclause { zval_ptr_dtor(&$$); }
+optionalwhereclause(R) ::= whereclause(W). { R = W; }
+optionalwhereclause(R) ::= . { TSRMLS_FETCH(); R = EG(uninitialized_zval_ptr); }
+
+%destructor cond { zval_ptr_dtor(&$$); }
+cond(R) ::= cond(A) AND cond(B). { DO_COND(R, "and", A, B); }
+cond(R) ::= cond(A) OR cond(B). { DO_COND(R, "or", A, B); }
+cond(R) ::= cond(A) XOR cond(B). { DO_COND(R, "xor", A, B); }
+
+cond(R) ::= expr(A) EQUALS expr(B). { DO_COND(R, "=", A, B); }
+cond(R) ::= expr(A) NOT_EQUAL expr(B). { DO_COND(R, "!=", A, B); }
+cond(R) ::= expr(A) UNEQUAL expr(B). { DO_COND(R, "<>", A, B); }
+cond(R) ::= expr(A) LESSER expr(B). { DO_COND(R, "<", A, B); }
+cond(R) ::= expr(A) GREATER expr(B).  { DO_COND(R, ">", A, B); }
+cond(R) ::= expr(A) LESSER_EQUAL expr(B). { DO_COND(R, "<=", A, B); }
+cond(R) ::= expr(A) GREATER_EQUAL expr(B). { DO_COND(R, ">=", A, B); }
+cond(R) ::= expr(A) LIKE expr(B). { DO_COND(R, "like", A, B); }
+cond(R) ::= expr(A) RLIKE expr(B). { DO_COND(R, "rlike", A, B); }
+cond(R) ::= expr(A) BETWEEN expr(B) AND expr(C). { DO_COND(R, "between", A, B); add_assoc_zval(R, "op-c", C); }
+cond(R) ::= expr(A) NOT LIKE expr(B). { DO_COND(R, "not like", A, B); }
+cond(R) ::= expr(A) NOT RLIKE expr(B). { DO_COND(R, "not rlike", A, B); }
+cond(R) ::= expr(A) NOT BETWEEN expr(B) AND expr(C). { DO_COND(R, "not between", A, B);  add_assoc_zval(R, "op-c", C); }
+cond(R) ::= LPAREN cond(C) RPAREN. { R = C; }
+
+%destructor exprlist { zval_ptr_dtor(&$$); }
+exprlist(R) ::= exprlist(L) COMMA expr(E). { add_next_index_zval(L, E); R = L; }
+exprlist(R) ::= expr(E). { MAKE_STD_ZVAL(R); array_init(R); add_next_index_zval(R, E); }
+
+%destructor expr { zval_ptr_dtor(&$$); }
+expr(R) ::= literal(L). { R = L; }
+expr(R) ::= LABEL(L). { R = pusp_zvalize_token(&L); }
+expr(R) ::= LABEL(F) LPAREN exprlist(A) RPAREN. { R = pusp_do_function(pusp_zvalize_token(&F), A); }
+expr(R) ::= LPAREN expr(E) RPAREN. { R = E; }
+expr(R) ::= expr(A) PLUS expr(B). { DO_MATHOP(R,A,"+",B); }
+expr(R) ::= expr(A) MINUS expr(B). { DO_MATHOP(R,A,"-",B); }
+expr(R) ::= expr(A) MUL expr(B). { DO_MATHOP(R,A,"*",B); }
+expr(R) ::= expr(A) DIV expr(B). { DO_MATHOP(R,A,"/",B); }
+expr(R) ::= expr(A) MOD expr(B). { DO_MATHOP(R,A,"%",B); }
+expr(R) ::= DISTINCT expr(E). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_stringl(R, "type", "distinct", sizeof("distinct") - 1, 1); add_assoc_zval(R, "distinct", E); }
+
+%destructor intnum { zval_ptr_dtor(&$$); }
+intnum(R) ::= LNUM(L). { R = pusp_zvalize_lnum(&L); }
+intnum(R) ::= HNUM(H). { R = pusp_zvalize_hnum(&H); }
+
+%destructor literal { zval_ptr_dtor(&$$); }
+literal(R) ::= STRING(S). { R = pusp_zvalize_token(&S); }
+literal(R) ::= intnum(I). { R = I; }
+literal(R) ::= NULL. { TSRMLS_FETCH(); R = EG(uninitialized_zval_ptr); }
+
+%destructor grouplist { zval_ptr_dtor(&$$); }
+grouplist(R) ::= grouplist(L) COMMA expr(E). { add_next_index_zval(L, E); R = L; }
+grouplist(R) ::= expr(E). { MAKE_STD_ZVAL(R); array_init(R); add_next_index_zval(R, E); }
+
+%destructor orderlist { zval_ptr_dtor(&$$); }
+orderlist(R) ::= orderlist(L) COMMA orderelement(E). { add_next_index_zval(L, E); R = L; }
+orderlist(R) ::= orderelement(E). { MAKE_STD_ZVAL(R); array_init(R); add_next_index_zval(R, E); }
+
+%destructor orderelement { zval_ptr_dtor(&$$); }
+orderelement(R) ::= expr(E) ASC. { MAKE_STD_ZVAL(R); add_assoc_stringl(R, "direction", "asc", sizeof("asc") - 1, 1); add_assoc_zval(R, "by", E); }
+orderelement(R) ::= expr(E) DESC. { MAKE_STD_ZVAL(R); add_assoc_stringl(R, "direction", "desc", sizeof("desc") - 1, 1); add_assoc_zval(R, "by", E); }
+orderelement(R) ::= expr(E). { MAKE_STD_ZVAL(R); add_assoc_null(R, "direction"); add_assoc_zval(R, "by", E); }
+
