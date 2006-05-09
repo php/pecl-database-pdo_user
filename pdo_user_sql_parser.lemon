@@ -57,6 +57,33 @@ static inline zval *pusp_zvalize_lnum(php_pdo_user_sql_token *T) {
 	return ret;
 }
 
+static inline zval *pusp_zvalize_dnum(php_pdo_user_sql_token *T) {
+	zval *ret;
+	double val = 0, div = 0;
+	int sign = 1;
+	unsigned char *s = T->token, *e = T->token + T->token_len;
+
+	MAKE_STD_ZVAL(ret);
+	if (*s == '-') {
+		sign = -1;
+		s++;
+	}
+	while (s < e) {
+		/* illegal characters aren't possible, the lexer wouldn't give us any */
+		if (*s == '.') {
+			div = 1;
+			s++;
+			continue;
+		}
+		val *= 10;
+		val += *s - '0';
+		div *= 10;
+		s++;
+	}
+	ZVAL_DOUBLE(ret, sign * val / div);
+	return ret;
+}
+
 static inline zval *pusp_zvalize_token(php_pdo_user_sql_token *T)
 {
 	zval *ret;
@@ -89,6 +116,11 @@ static inline void pusp_do_push_labeled_zval(zval *ret, zval **pair)
 
 static inline void pusp_do_terminal_statement(zval **return_value, zval *statement, zend_bool have_semicolon)
 {
+	if (Z_TYPE_PP(return_value) == IS_ARRAY) {
+		/* Toss out 2nd and subsequent statements */
+		zval_ptr_dtor(&statement);
+		return;
+	}
 	**return_value = *statement;
 	efree(statement);
 	add_assoc_bool(*return_value, "terminating-semicolon", have_semicolon);
@@ -159,6 +191,24 @@ static zval *pusp_do_declare_type(char *type, char *attr, zval *zattr)
 	if (attr) {
 		add_assoc_zval(ret, attr, zattr);
 	}
+
+	return ret;
+}
+
+static zval *pusp_do_field(php_pdo_user_sql_token *database, php_pdo_user_sql_token *table, php_pdo_user_sql_token *field)
+{
+	zval *ret;
+
+	if (!database && !table) {
+		return pusp_zvalize_token(field);
+	}
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	if (database) {
+		add_assoc_zval(ret, "database", pusp_zvalize_token(database));
+	}
+	add_assoc_zval(ret, "table", pusp_zvalize_token(table));
+	add_assoc_zval(ret, "field", pusp_zvalize_token(field));
 
 	return ret;
 }
@@ -299,7 +349,10 @@ static inline zval *pusp_do_drop_statement(zval *table)
 
 } /* %include */
 %syntax_error {
-	RETVAL_FALSE;
+	if (Z_TYPE_P(return_value) == IS_NULL) {
+		/* Only throw error if we don't already have a statement */
+		RETVAL_FALSE;
+	}
 }
 
 terminal_statement ::= statement(S) SEMICOLON. { pusp_do_terminal_statement(&return_value, S, 1); }
@@ -429,7 +482,11 @@ field(R) ::= field(E) AS LABEL(A). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_
 tableexpr(R) ::= LPAREN tableexpr(T) RPAREN. { R = T; }
 tableexpr(R) ::= tableexpr(A) joinclause(J) tableexpr(B) ON cond(O). { R = pusp_do_join_expression(A, J, B, O); }
 tableexpr(R) ::= tableexpr(E) AS LABEL(A). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_stringl(R, "type", "alias", sizeof("alias") - 1, 1); add_assoc_zval(R, "table", E); add_assoc_zval(R, "as", pusp_zvalize_token(&A)); }
-tableexpr(R) ::= LABEL(L). { R = pusp_zvalize_token(&L); }
+tableexpr(R) ::= tablename(T). { R = T; }
+
+%destructor tablename { zval_ptr_dtor(&$$); }
+tablename(R) ::= LABEL(D) DOT LABEL(F). { R = pusp_do_field(NULL, &D, &F); }
+tablename(R) ::= LABEL(F). { R = pusp_do_field(NULL, NULL, &F); }
 
 /*
 TODO: Make this work, there's a ornery reduce conflict going on somewhere...
@@ -486,10 +543,10 @@ cond(R) ::= expr(A) LESSER_EQUAL expr(B). { DO_COND(R, "<=", A, B); }
 cond(R) ::= expr(A) GREATER_EQUAL expr(B). { DO_COND(R, ">=", A, B); }
 cond(R) ::= expr(A) LIKE expr(B). { DO_COND(R, "like", A, B); }
 cond(R) ::= expr(A) RLIKE expr(B). { DO_COND(R, "rlike", A, B); }
-cond(R) ::= expr(A) BETWEEN expr(B) AND expr(C). { DO_COND(R, "between", A, B); add_assoc_zval(R, "op-c", C); }
+cond(R) ::= expr(A) BETWEEN expr(B) AND expr(C). { DO_COND(R, "between", A, B); add_assoc_zval(R, "op3", C); }
 cond(R) ::= expr(A) NOT LIKE expr(B). { DO_COND(R, "not like", A, B); }
 cond(R) ::= expr(A) NOT RLIKE expr(B). { DO_COND(R, "not rlike", A, B); }
-cond(R) ::= expr(A) NOT BETWEEN expr(B) AND expr(C). { DO_COND(R, "not between", A, B);  add_assoc_zval(R, "op-c", C); }
+cond(R) ::= expr(A) NOT BETWEEN expr(B) AND expr(C). { DO_COND(R, "not between", A, B);  add_assoc_zval(R, "op3", C); }
 cond(R) ::= LPAREN cond(C) RPAREN. { R = C; }
 
 %destructor exprlist { zval_ptr_dtor(&$$); }
@@ -498,7 +555,9 @@ exprlist(R) ::= expr(E). { MAKE_STD_ZVAL(R); array_init(R); add_next_index_zval(
 
 %destructor expr { zval_ptr_dtor(&$$); }
 expr(R) ::= literal(L). { R = L; }
-expr(R) ::= LABEL(L). { R = pusp_zvalize_token(&L); }
+expr(R) ::= LABEL(D) DOT LABEL(T) DOT LABEL(F). { R = pusp_do_field(&D, &T, &F); }
+expr(R) ::= LABEL(T) DOT LABEL(F). { R = pusp_do_field(NULL, &T, &F); }
+expr(R) ::= LABEL(F). { R = pusp_do_field(NULL, NULL, &F); }
 expr(R) ::= LABEL(F) LPAREN exprlist(A) RPAREN. { R = pusp_do_function(pusp_zvalize_token(&F), A); }
 expr(R) ::= LPAREN expr(E) RPAREN. { R = E; }
 expr(R) ::= expr(A) PLUS expr(B). { DO_MATHOP(R,A,"+",B); }
@@ -512,9 +571,13 @@ expr(R) ::= DISTINCT expr(E). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_strin
 intnum(R) ::= LNUM(L). { R = pusp_zvalize_lnum(&L); }
 intnum(R) ::= HNUM(H). { R = pusp_zvalize_hnum(&H); }
 
+%destructor dblnum { zval_ptr_dtor(&$$); }
+dblnum(R) ::= DNUM(D). { R = pusp_zvalize_dnum(&D); }
+
 %destructor literal { zval_ptr_dtor(&$$); }
 literal(R) ::= STRING(S). { R = pusp_zvalize_token(&S); }
 literal(R) ::= intnum(I). { R = I; }
+literal(R) ::= dblnum(D). { R = D; }
 literal(R) ::= NULL. { TSRMLS_FETCH(); R = EG(uninitialized_zval_ptr); }
 
 %destructor grouplist { zval_ptr_dtor(&$$); }

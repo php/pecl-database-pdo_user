@@ -252,12 +252,14 @@ int php_pdo_user_sql_get_token(php_pdo_user_sql_tokenizer *t, php_pdo_user_sql_t
 	[,]										{ RET(PU_COMMA); }
 	[=]										{ RET(PU_EQUALS); }
 	[;]										{ RET(PU_SEMICOLON); }
+	[.]										{ RET(PU_DOT); }
 
 	([`] (ESCBT|ESCSL|ESCSEQ|ANYNOEOF\[\\`])* [`])	{ RET_UNESC(PU_LABEL); }
 	(["] (ESCQQ|ESCSL|ESCSEQ|ANYNOEOF\[\\"])* ["])	{ RET_UNESC(PU_STRING); }
 	(['] (ESCQ|ESCSL|ESCSEQ|ANYNOEOF\[\\'])* ['])	{ RET_UNESC(PU_STRING); }
 	[\s\r\n\t ]+							{ RET(PU_WHITESPACE); }
 	('0x' HNUMS+)							{ RET(PU_HNUM); }
+	([-]? LNUMS* [.] LNUMS+)				{ RET(PU_DNUM); }
 	LNUMS+									{ RET(PU_LNUM); }
 	(LABELSTART LABELCHAR*)					{ RET(PU_LABEL); }
 	EOF										{ RET(PU_END); }
