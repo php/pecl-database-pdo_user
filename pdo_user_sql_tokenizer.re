@@ -60,24 +60,34 @@ static void php_pdo_user_unquote(php_pdo_user_sql_token *token)
 						*(p++) = val;
 						goto next_iter;
 					}
-					default: /* local-quote, octal, and non-escaped */
+					default: /* local-quote, octal and literal */
 					{
 						unsigned char val = 0;
 
-						if (token->token[i] >= '0' && token->token[i] <= '7') {
+						if (token->token[i] == token->token[0]) {
+							/* local-quote */
+							*(p++) = token->token[i];
+							goto next_iter;
+						} else if (token->token[i] >= '0' && token->token[i] <= '7') {
+							/* Octit #1 */
 							val = token->token[i] - '0';
 						} else {
+							/* not a normal escape sequence */
+							*(p++) = '\\';
 							*(p++) = token->token[i];
 							goto next_iter;
 						}
+
 						if (++i >= token->token_len) {
 							*(p++) = val;
 							goto done;
 						}
 						if (token->token[i] >= '0' && token->token[i] <= '7') {
+							/* Octit #2 */
 							val <<= 3;
 							val |= token->token[i] - '0';
 						} else {
+							/* This was a single octit value, back up */
 							*(p++) = val;
 							i--;
 							goto next_iter;
@@ -91,9 +101,11 @@ static void php_pdo_user_unquote(php_pdo_user_sql_token *token)
 							goto done;
 						}
 						if (token->token[i] >= '0' && token->token[i] <= '7') {
+							/* Octit #3 */
 							val <<= 3;
 							val |= token->token[i] - '0';
 						} else {
+							/* This was a two-octit value, back up */
 							*(p++) = val;
 							i--;
 							goto next_iter;
@@ -123,7 +135,7 @@ done:
 #define YYCTYPE		char
 #define YYCURSOR	(t->start)
 #define YYLIMIT		(t->end)
-#define YYFILL(n)
+#define YYFILL(n)	
 #define YYMARKER	marker
 
 int php_pdo_user_sql_get_token(php_pdo_user_sql_tokenizer *t, php_pdo_user_sql_token *token)
@@ -136,8 +148,7 @@ int php_pdo_user_sql_get_token(php_pdo_user_sql_tokenizer *t, php_pdo_user_sql_t
 	ESCBT		= [\\][`];
 	ESCQQ		= [\\]["];
 	ESCQ		= [\\]['];
-	ESCSL		= [\\][\\];
-	ESCSEQ		= [\\][rntx0-7];
+	ESCSEQ		= [\\].;
 	LNUMS		= [0-9];
 	HNUMS		= [0-9A-Fa-f];
 	LABELCHAR	= [0-9a-zA-Z_\200-\377];
@@ -254,9 +265,9 @@ int php_pdo_user_sql_get_token(php_pdo_user_sql_tokenizer *t, php_pdo_user_sql_t
 	[;]										{ RET(PU_SEMICOLON); }
 	[.]										{ RET(PU_DOT); }
 
-	([`] (ESCBT|ESCSL|ESCSEQ|ANYNOEOF\[\\`])* [`])	{ RET_UNESC(PU_LABEL); }
-	(["] (ESCQQ|ESCSL|ESCSEQ|ANYNOEOF\[\\"])* ["])	{ RET_UNESC(PU_STRING); }
-	(['] (ESCQ|ESCSL|ESCSEQ|ANYNOEOF\[\\'])* ['])	{ RET_UNESC(PU_STRING); }
+	([`] (ESCBT|ESCSEQ|ANYNOEOF\[\\`])* [`]){ RET_UNESC(PU_LABEL); }
+	(["] (ESCQQ|ESCSEQ|ANYNOEOF\[\\"])* ["]){ RET_UNESC(PU_STRING); }
+	(['] (ESCQ|ESCSEQ|ANYNOEOF\[\\'])* ['])	{ RET_UNESC(PU_STRING); }
 	[\s\r\n\t ]+							{ RET(PU_WHITESPACE); }
 	('0x' HNUMS+)							{ RET(PU_HNUM); }
 	([-]? LNUMS* [.] LNUMS+)				{ RET(PU_DNUM); }
