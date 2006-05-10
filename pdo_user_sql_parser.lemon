@@ -354,6 +354,11 @@ static inline zval *pusp_do_drop_statement(zval *table)
 		RETVAL_FALSE;
 	}
 }
+%token_destructor {
+	if ($$.freeme) {
+		efree($$.token);
+	}
+}
 
 terminal_statement ::= statement(S) SEMICOLON. { pusp_do_terminal_statement(&return_value, S, 1); }
 terminal_statement ::= statement(S). { pusp_do_terminal_statement(&return_value, S, 0); }
@@ -480,6 +485,7 @@ field(R) ::= field(E) AS LABEL(A). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_
 
 %destructor tableexpr { zval_ptr_dtor(&$$); }
 tableexpr(R) ::= LPAREN tableexpr(T) RPAREN. { R = T; }
+tableexpr(R) ::= LPAREN selectstatement(S) RPAREN. { R = S; }
 tableexpr(R) ::= tableexpr(A) joinclause(J) tableexpr(B) ON cond(O). { R = pusp_do_join_expression(A, J, B, O); }
 tableexpr(R) ::= tableexpr(E) AS LABEL(A). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_stringl(R, "type", "alias", sizeof("alias") - 1, 1); add_assoc_zval(R, "table", E); add_assoc_zval(R, "as", pusp_zvalize_token(&A)); }
 tableexpr(R) ::= tablename(T). { R = T; }
