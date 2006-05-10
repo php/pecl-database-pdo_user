@@ -8,7 +8,7 @@ PHP_ARG_ENABLE(pdo-user, for Userdriver support for PDO,
 [  --enable-pdo-user         PDO: Userdriver support.])
 
 if test "$PHP_PDO_USER" != "no"; then
-  AC_DEFINE(HAVE_USER, 1, [Whether you have Userdriver Support])
+  AC_DEFINE(HAVE_PDO_USER, 1, [Whether you have Userdriver Support])
 
   ifdef([PHP_CHECK_PDO_INCLUDES],
   [
