@@ -261,4 +261,34 @@ class PDO_User {
 		 * When $value is passed, the parameter will be set to this new value
 		 * Whether or not $value is passed, the current value will be returned */
 	}
+
+	function tokenizeSQL($sql[, $ignore_whitespace = true]) {
+		/* Split a standard SQL statement into token pieces interpolating some escape sequences in ``, '', and "" pairs
+			\\		Literal backslash
+			\000	Interpolated to character with identified octal value
+			\x00	Interpolated to character with identified hex value
+			\r		Carriage Return (0x0D)
+			\n		Line Feed (0x0A)
+			\t		Tab (0x09)
+			\'		Single Quote (Only interpolated within '' strings)
+			\"		Double Quote (Only interpolated within "" strings)
+			\`		Backtick (Only interpolated witin `` strings)
+
+			Any other escape sequence will be interpolated as it's literal value, e.g.:
+			\a		Literal backslash followed by the letter a
+
+			Returns a 2D array of arrays containing the token id and the source text it came from. */
+	}
+
+	function tokenName($tokenid) {
+		/* Returns the textual name of the token ID returned by tokenizeSQL(), e.g.:
+			PU_SELECT
+			PU_STRING
+			PU_WHITESPACE
+			etc... */
+	}
+
+	function parseSQL($sql) {
+		/* Parse a standard SQL string into a query expression tree */
+	}
 }
