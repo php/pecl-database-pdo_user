@@ -252,6 +252,37 @@ PHP_METHOD(pdo_user,tokenizesql)
 }
 /* }}} */
 
+/* {{{ proto string PDO_User::tokenName(int tokenid)
+Get the textual name of a given token ID */
+PHP_METHOD(pdo_user,tokenname)
+{
+	php_pdo_user_sql_token_label *labels = php_pdo_user_sql_token_labels;
+	long tokenid;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "l", &tokenid) == FAILURE) {
+		return;
+	}
+
+	if (tokenid < 0 || tokenid > 255) {
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Invalid token ID (%ld)", tokenid);
+		RETURN_FALSE;
+	}
+
+	/* Token IDs are dynamically assigned by the parse so we can't
+	 * just use the id as an index into the translation table.
+	 * Gonna have to step through the slow way... */
+	while (labels->label) {
+		if (labels->id == tokenid) {
+			RETURN_STRING(labels->label, 1);
+		}
+		labels++;
+	}
+
+	php_error_docref(NULL TSRMLS_CC, E_WARNING, "Invalid token ID (%ld)", tokenid);
+	RETURN_FALSE;
+}
+/* }}} */
+
 static void *pdo_user_malloc_wrapper(size_t x) { return emalloc(x); }
 static void pdo_user_free_wrapper(size_t x) { efree(x); }
 
@@ -298,6 +329,7 @@ static zend_function_entry php_pdo_user_class_functions[] = {
 	PHP_MALIAS(pdo_user,	statementparam,		driverparam,	NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
 	PHP_ME(pdo_user,		parsedsn,							NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
 	PHP_ME(pdo_user,		tokenizesql,						NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+	PHP_ME(pdo_user,		tokenname,							NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
 	PHP_ME(pdo_user,		parsesql,							NULL,	ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
 	{ NULL, NULL, NULL }
 };
