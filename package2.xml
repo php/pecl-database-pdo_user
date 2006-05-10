@@ -14,17 +14,19 @@
   <email>pollita@php.net</email>
   <active>yes</active>
  </lead>
- <date>2006-05-03</date>
- <version>
-  <release>0.1.0</release>
-  <api>0.1.0</api>
- </version>
- <stability>
-  <release>beta</release>
-  <api>beta</api>
- </stability>
- <license uri="http://www.php.net/license">PHP</license>
- <notes>Initial Release</notes>
+
+   <date>2006-05-10</date>
+   <version>
+    <release>0.2.0</release>
+    <api>0.2.0</api>
+   </version>
+   <stability>
+    <release>beta</release>
+    <api>beta</api>
+   </stability>
+   <license uri="http://www.php.net/license">PHP</license>
+   <notes>Added generic SQL Tokenizer and Parser</notes>
+
  <contents>
   <dir name="/">
    <file name="config.m4" role="src" />
@@ -32,14 +34,23 @@
    <file name="CREDITS" role="doc" />
    <file name="EXPERIMENTAL" role="doc" />
    <file name="README.OBJECTS" role="doc" />
+   <file name="Makefile.frag" role="src" />
    <file name="pdo_user.c" role="src" />
    <file name="pdo_user_driver.c" role="src" />
    <file name="pdo_user_statement.c" role="src" />
    <file name="pdo_user_object.c" role="src" />
    <file name="php_pdo_user.h" role="src" />
    <file name="php_pdo_user_int.h" role="src" />
+   <file name="php_pdo_user_sql.h" role="src" />
+   <file name="pdo_user_sql_parser.c" role="src" />
+   <file name="pdo_user_sql_parser.h" role="src" />
+   <file name="pdo_user_sql_parser.lemon" role="src" />
+   <file name="pdo_user_sql_tokenizer.c" role="src" />
+   <file name="pdo_user_sql_tokenizer.re" role="src" />
    <dir name="tests/">
     <file name="globals.phpt" role="test" />
+    <file name="tokenizer.phpt" role="test" />
+    <file name="subselect.phpt" role="test" />
    </dir> <!-- tests/ -->
   </dir> <!-- / -->
  </contents>
@@ -61,6 +72,23 @@
  </dependencies>
  <providesextension>PDO_USER</providesextension>
  <extsrcrelease />
+
+ <changelog>
+  <release>
+   <date>2006-05-03</date>
+   <version>
+    <release>0.1.0</release>
+    <api>0.1.0</api>
+   </version>
+   <stability>
+    <release>beta</release>
+    <api>beta</api>
+   </stability>
+   <license uri="http://www.php.net/license">PHP</license>
+   <notes>Initial Release</notes>
+  </release>
+ </changelog>
+
 </package>
 
 
