@@ -21,6 +21,14 @@
 #include "php_pdo_user_int.h"
 #include "php_pdo_user_sql.h"
 
+/* PHP 5.0 Compatability */
+#ifndef PHP_MALIAS
+# define PHP_MALIAS ZEND_MALIAS
+#endif
+#ifndef PHP_ABSTRACT_ME
+# define PHP_ABSTRACT_ME ZEND_ABSTRACT_ME
+#endif
+
 /* ******************
    * PDO_User Class *
    ****************** */
