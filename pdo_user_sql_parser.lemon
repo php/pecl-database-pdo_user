@@ -213,6 +213,17 @@ static zval *pusp_do_field(php_pdo_user_sql_token *database, php_pdo_user_sql_to
 	return ret;
 }
 
+static zval *pusp_do_placeholder(zval *placeholder)
+{
+	zval *ret;
+
+	MAKE_STD_ZVAL(ret);
+	array_init(ret);
+	add_assoc_zval(ret, "placeholder", placeholder);
+
+	return ret;
+}
+
 /* ---------------- */
 
 static inline zval *pusp_do_select_statement(zval *fieldlist, zval *tableexpr, zval *modifiers)
@@ -481,6 +492,9 @@ fieldlist(R) ::= field(F). { MAKE_STD_ZVAL(R); array_init(R); add_next_index_zva
 
 %destructor field { zval_ptr_dtor(&$$); }
 field(R) ::= expr(E). { R = E; }
+field(R) ::= LABEL(D) DOT LABEL(T) DOT MUL(F). { R = pusp_do_field(&D, &T, &F); }
+field(R) ::= LABEL(T) DOT MUL(F). { R = pusp_do_field(NULL, &T, &F); }
+field(R) ::= MUL(F). { R = pusp_do_field(NULL, NULL, &F); }
 field(R) ::= field(E) AS LABEL(A). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_stringl(R, "type", "alias", sizeof("alias") - 1, 1); add_assoc_zval(R, "field", E); add_assoc_zval(R, "as", pusp_zvalize_token(&A)); }
 
 %destructor tableexpr { zval_ptr_dtor(&$$); }
@@ -564,6 +578,8 @@ expr(R) ::= literal(L). { R = L; }
 expr(R) ::= LABEL(D) DOT LABEL(T) DOT LABEL(F). { R = pusp_do_field(&D, &T, &F); }
 expr(R) ::= LABEL(T) DOT LABEL(F). { R = pusp_do_field(NULL, &T, &F); }
 expr(R) ::= LABEL(F). { R = pusp_do_field(NULL, NULL, &F); }
+expr(R) ::= COLON LABEL(L). { R = pusp_do_placeholder(pusp_zvalize_token(&L)); }
+expr(R) ::= COLON intnum(I). { R = pusp_do_placeholder(I); }
 expr(R) ::= LABEL(F) LPAREN exprlist(A) RPAREN. { R = pusp_do_function(pusp_zvalize_token(&F), A); }
 expr(R) ::= LPAREN expr(E) RPAREN. { R = E; }
 expr(R) ::= expr(A) PLUS expr(B). { DO_MATHOP(R,A,"+",B); }

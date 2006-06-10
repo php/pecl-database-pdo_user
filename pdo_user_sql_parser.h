@@ -81,8 +81,8 @@
 #define PU_UNSIGNED                       81
 #define PU_ZEROFILL                       82
 #define PU_TO                             83
-#define PU_ON                             84
-#define PU_DOT                            85
+#define PU_DOT                            84
+#define PU_ON                             85
 #define PU_INNER                          86
 #define PU_JOIN                           87
 #define PU_OUTER                          88
@@ -91,6 +91,7 @@
 #define PU_NOT_EQUAL                      91
 #define PU_UNEQUAL                        92
 #define PU_LESSER_EQUAL                   93
-#define PU_DNUM                           94
-#define PU_ASC                            95
-#define PU_DESC                           96
+#define PU_COLON                          94
+#define PU_DNUM                           95
+#define PU_ASC                            96
+#define PU_DESC                           97

@@ -152,7 +152,7 @@ int php_pdo_user_sql_get_token(php_pdo_user_sql_tokenizer *t, php_pdo_user_sql_t
 	LNUMS		= [0-9];
 	HNUMS		= [0-9A-Fa-f];
 	LABELCHAR	= [0-9a-zA-Z_\200-\377];
-	LABELSTART	= [a-zA-Z_\200-\377];
+	LABELSTART	= [a-zA-Z_:\200-\377];
 	ANYNOEOF	= [\001-\377];
 	EOF			= [\000];
 
@@ -264,6 +264,7 @@ int php_pdo_user_sql_get_token(php_pdo_user_sql_tokenizer *t, php_pdo_user_sql_t
 	[=]										{ RET(PU_EQUALS); }
 	[;]										{ RET(PU_SEMICOLON); }
 	[.]										{ RET(PU_DOT); }
+	[:]										{ RET(PU_COLON); }
 
 	([`] (ESCBT|ESCSEQ|ANYNOEOF\[\\`])* [`]){ RET_UNESC(PU_LABEL); }
 	(["] (ESCQQ|ESCSEQ|ANYNOEOF\[\\"])* ["]){ RET_UNESC(PU_STRING); }
