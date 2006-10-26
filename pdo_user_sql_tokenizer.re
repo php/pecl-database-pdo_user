@@ -140,9 +140,9 @@ done:
 
 int php_pdo_user_sql_get_token(php_pdo_user_sql_tokenizer *t, php_pdo_user_sql_token *token)
 {
+	char *marker = t->start;
 	token->freeme = 0;
 	token->token = t->start;
-	char *marker = t->start;
 
 /*!re2c
 	ESCBT		= [\\][`];
