@@ -292,7 +292,7 @@ PHP_METHOD(pdo_user,tokenname)
 /* }}} */
 
 static void *pdo_user_malloc_wrapper(size_t x) { return emalloc(x); }
-static void pdo_user_free_wrapper(size_t x) { efree(x); }
+static void pdo_user_free_wrapper(void *x) { efree(x); }
 
 /* {{{ proto array PDO_User::parseSQL(string sql)
 Compile a SQL statement into a query structure */
