@@ -554,6 +554,7 @@ cond(R) ::= cond(A) AND cond(B). { DO_COND(R, "and", A, B); }
 cond(R) ::= cond(A) OR cond(B). { DO_COND(R, "or", A, B); }
 cond(R) ::= cond(A) XOR cond(B). { DO_COND(R, "xor", A, B); }
 
+cond(R) ::= expr(A) IN inexpr(B). { DO_COND(R, "IN", A, B); }
 cond(R) ::= expr(A) EQUALS expr(B). { DO_COND(R, "=", A, B); }
 cond(R) ::= expr(A) NOT_EQUAL expr(B). { DO_COND(R, "!=", A, B); }
 cond(R) ::= expr(A) UNEQUAL expr(B). { DO_COND(R, "<>", A, B); }
@@ -588,6 +589,10 @@ expr(R) ::= expr(A) MUL expr(B). { DO_MATHOP(R,A,"*",B); }
 expr(R) ::= expr(A) DIV expr(B). { DO_MATHOP(R,A,"/",B); }
 expr(R) ::= expr(A) MOD expr(B). { DO_MATHOP(R,A,"%",B); }
 expr(R) ::= DISTINCT expr(E). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_stringl(R, "type", "distinct", sizeof("distinct") - 1, 1); add_assoc_zval(R, "distinct", E); }
+
+%destructor inexpr { zval_ptr_dtor(&$$); }
+inexpr(R) ::= LPAREN grouplist(L) RPAREN. { R = L; }
+inexpr(R) ::= LPAREN selectstatement(L) RPAREN. { R = L; }
 
 %destructor intnum { zval_ptr_dtor(&$$); }
 intnum(R) ::= LNUM(L). { R = pusp_zvalize_lnum(&L); }

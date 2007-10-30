@@ -207,6 +207,7 @@ int php_pdo_user_sql_get_token(php_pdo_user_sql_tokenizer *t, php_pdo_user_sql_t
 	'desc'									{ RET(PU_DESC); }
 	'unsigned'								{ RET(PU_UNSIGNED); }
 	'zerofill'								{ RET(PU_ZEROFILL); }
+	'in'									{ RET(PU_IN); }
 
 	/* SQL Types */
 	'bit'									{ RET(PU_BIT); }
