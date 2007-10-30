@@ -14,10 +14,16 @@
   <email>pollita@php.net</email>
   <active>yes</active>
  </lead>
+ <developer>
+  <name>Ben Ramsey</name>
+  <user>ramsey</user>
+  <email>ramsey@php.net</email>
+  <active>yes</active>
+ </developer>
 
-   <date>2006-05-10</date>
+   <date>2007-10-30</date>
    <version>
-    <release>0.2.0</release>
+    <release>0.3.0</release>
     <api>0.2.0</api>
    </version>
    <stability>
@@ -25,7 +31,11 @@
     <api>beta</api>
    </stability>
    <license uri="http://www.php.net/license">PHP</license>
-   <notes>Added generic SQL Tokenizer and Parser</notes>
+   <notes>Improvements to SQL Parser:
+
+Added support for * wildcard field
+Added support for :123 and :label style placeholders
+Added support for IN conditionals</notes>
 
  <contents>
   <dir name="/">
@@ -74,6 +84,21 @@
  <extsrcrelease />
 
  <changelog>
+
+  <release>
+   <date>2006-05-10</date>
+   <version>
+    <release>0.2.0</release>
+    <api>0.2.0</api>
+   </version>
+   <stability>
+    <release>beta</release>
+    <api>beta</api>
+   </stability>
+   <license uri="http://www.php.net/license">PHP</license>
+   <notes>Added generic SQL Tokenizer and Parser</notes>
+  </release>
+
   <release>
    <date>2006-05-03</date>
    <version>
