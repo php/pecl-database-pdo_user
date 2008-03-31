@@ -22,7 +22,7 @@
 #define PHP_PDO_USER_H
 
 #define PHP_PDO_USER_EXTNAME			"pdo_user"
-#define PHP_PDO_USER_EXTVER				"0.2"
+#define PHP_PDO_USER_VERSION			"0.4.0-dev"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"

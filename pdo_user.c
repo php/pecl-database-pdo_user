@@ -178,6 +178,7 @@ PHP_MINFO_FUNCTION(pdo_user)
 {
 	php_info_print_table_start();
 	php_info_print_table_header(2, "PDO Driver for Userspace data sources", "enabled");
+	php_info_print_table_row(2, "Driver version", PHP_PDO_USER_VERSION);
 	php_info_print_table_end();
 }
 /* }}} */
@@ -197,7 +198,7 @@ zend_module_entry pdo_user_module_entry = {
 	PHP_RINIT(pdo_user),
 	PHP_RSHUTDOWN(pdo_user),
 	PHP_MINFO(pdo_user),
-	PHP_PDO_USER_EXTVER,
+	PHP_PDO_USER_VERSION,
 	STANDARD_MODULE_PROPERTIES
 };
 /* }}} */
