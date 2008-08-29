@@ -513,7 +513,7 @@ TODO: Make this work, there's a ornery reduce conflict going on somewhere...
 tableexpr(R) ::= tableexprlist(L) COMMA tableexpr(T). { add_next_index_zval(L, T); R = L; }
 
 tableexprlist(R) ::= tableexprlist(L) COMMA tableexpr(T). { add_next_index_zval(L, T); R = L; }
-tableexprlist(R) ::= tableexpr(T). { MAKE_STD_ZVAL(R); add_assoc_stringl(R, "type", "table-list", sizeof("table-list") - 1, 1); add_next_index_zval(R, T); }
+tableexprlist(R) ::= tableexpr(T). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_stringl(R, "type", "table-list", sizeof("table-list") - 1, 1); add_next_index_zval(R, T); }
 */
 
 %destructor joinclause { zval_ptr_dtor(&$$); }
@@ -616,7 +616,7 @@ orderlist(R) ::= orderlist(L) COMMA orderelement(E). { add_next_index_zval(L, E)
 orderlist(R) ::= orderelement(E). { MAKE_STD_ZVAL(R); array_init(R); add_next_index_zval(R, E); }
 
 %destructor orderelement { zval_ptr_dtor(&$$); }
-orderelement(R) ::= expr(E) ASC. { MAKE_STD_ZVAL(R); add_assoc_stringl(R, "direction", "asc", sizeof("asc") - 1, 1); add_assoc_zval(R, "by", E); }
-orderelement(R) ::= expr(E) DESC. { MAKE_STD_ZVAL(R); add_assoc_stringl(R, "direction", "desc", sizeof("desc") - 1, 1); add_assoc_zval(R, "by", E); }
-orderelement(R) ::= expr(E). { MAKE_STD_ZVAL(R); add_assoc_null(R, "direction"); add_assoc_zval(R, "by", E); }
+orderelement(R) ::= expr(E) ASC. { MAKE_STD_ZVAL(R); array_init(R); add_assoc_stringl(R, "direction", "asc", sizeof("asc") - 1, 1); add_assoc_zval(R, "by", E); }
+orderelement(R) ::= expr(E) DESC. { MAKE_STD_ZVAL(R); array_init(R); add_assoc_stringl(R, "direction", "desc", sizeof("desc") - 1, 1); add_assoc_zval(R, "by", E); }
+orderelement(R) ::= expr(E). { MAKE_STD_ZVAL(R); array_init(R); add_assoc_null(R, "direction"); add_assoc_zval(R, "by", E); }
 

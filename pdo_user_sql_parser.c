@@ -2372,19 +2372,19 @@ static void yy_reduce(
         break;
       case 152:
 #line 619 "pdo_user_sql_parser.lemon"
-{ MAKE_STD_ZVAL(yygotominor.yy252); add_assoc_stringl(yygotominor.yy252, "direction", "asc", sizeof("asc") - 1, 1); add_assoc_zval(yygotominor.yy252, "by", yymsp[-1].minor.yy252);   yy_destructor(97,&yymsp[0].minor);
+{ MAKE_STD_ZVAL(yygotominor.yy252); array_init(yygotominor.yy252); add_assoc_stringl(yygotominor.yy252, "direction", "asc", sizeof("asc") - 1, 1); add_assoc_zval(yygotominor.yy252, "by", yymsp[-1].minor.yy252);   yy_destructor(97,&yymsp[0].minor);
 }
 #line 2379 "pdo_user_sql_parser.c"
         break;
       case 153:
 #line 620 "pdo_user_sql_parser.lemon"
-{ MAKE_STD_ZVAL(yygotominor.yy252); add_assoc_stringl(yygotominor.yy252, "direction", "desc", sizeof("desc") - 1, 1); add_assoc_zval(yygotominor.yy252, "by", yymsp[-1].minor.yy252);   yy_destructor(98,&yymsp[0].minor);
+{ MAKE_STD_ZVAL(yygotominor.yy252); array_init(yygotominor.yy252); add_assoc_stringl(yygotominor.yy252, "direction", "desc", sizeof("desc") - 1, 1); add_assoc_zval(yygotominor.yy252, "by", yymsp[-1].minor.yy252);   yy_destructor(98,&yymsp[0].minor);
 }
 #line 2385 "pdo_user_sql_parser.c"
         break;
       case 154:
 #line 621 "pdo_user_sql_parser.lemon"
-{ MAKE_STD_ZVAL(yygotominor.yy252); add_assoc_null(yygotominor.yy252, "direction"); add_assoc_zval(yygotominor.yy252, "by", yymsp[0].minor.yy252); }
+{ MAKE_STD_ZVAL(yygotominor.yy252); array_init(yygotominor.yy252); add_assoc_null(yygotominor.yy252, "direction"); add_assoc_zval(yygotominor.yy252, "by", yymsp[0].minor.yy252); }
 #line 2390 "pdo_user_sql_parser.c"
         break;
   };
